@@ -209,21 +209,18 @@ def main_ui():
         try:
             contents = repo.get_contents(file_path)
             data_df = pd.read_excel(BytesIO(base64.b64decode(contents.content)), engine='openpyxl')
-            data_df['Date'] = pd.to_datetime(data_df['Date']).dt.strftime('%Y-%m-%d')
             
-            # 完整数据下载
-            st.subheader("完整数据下载")
-            st.download_button(
-                label="下载完整数据",
-                data=base64.b64decode(contents.content),
-                file_name="extracted_data.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-
-            # 按日期下载
+            # 新增日期处理逻辑
+            data_df['Date'] = pd.to_datetime(data_df['Date'])  # 转换为datetime类型
+            data_df = data_df.sort_values('Date', ascending=False)  # 按日期降序排列
+            
+            # 生成排序后的日期选项
+            sorted_dates = data_df['Date'].dt.strftime('%Y-%m-%d').unique()
+            
             st.subheader("按日期下载")
-            selected_date = st.selectbox("选择日期", options=data_df['Date'].unique())
-            daily_data = data_df[data_df['Date'] == selected_date]
+            selected_date = st.selectbox("选择日期", options=sorted_dates)  # 显示排序后的日期
+            
+            daily_data = data_df[data_df['Date'] == pd.to_datetime(selected_date)]
             
             output = BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
