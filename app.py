@@ -1,3 +1,6 @@
+import os
+os.environ['STREAMLIT_SERVER_ENABLE_ALT'] = 'false'
+
 import fitz
 import re
 import logging
@@ -7,9 +10,8 @@ from datetime import datetime
 import streamlit as st
 import tempfile
 from io import BytesIO
-from github import Github
+from github import Github, Auth
 import base64
-import requests
 
 # 配置日志
 logging.basicConfig(level=logging.ERROR)
@@ -89,7 +91,11 @@ class PDFDataExtractor:
             for pattern in patterns:  
                 matches = re.findall(pattern, text)
                 for match in matches:  
-                    code, value = match
+                    if isinstance(match, tuple):
+                        code, value = match
+                    else:
+                        code = pattern[2:10]  # 从正则表达式中提取代码
+                        value = match
                     extracted_data[code] = float(value)
 
         doc.close()  
@@ -118,8 +124,9 @@ class GitHubDataSaver:
         current_date = df['Date'].iloc[0]
 
         try:
-            # 连接到GitHub
-            g = Github(self.github_token)
+            # 使用新的API连接到GitHub
+            auth = Auth.Token(self.github_token)
+            g = Github(auth=auth)
             repo = g.get_repo(self.repo_name)
             
             # 尝试获取现有文件
@@ -153,13 +160,19 @@ class GitHubDataSaver:
             st.error(f"保存数据时出错: {str(e)}")
 
 def main_ui():
-    st.set_page_config(page_title="PDF 数据提取器", layout="wide")
+    # 设置页面配置
+    st.set_page_config(
+        page_title="PDF 数据提取器",
+        layout="wide",
+        initial_sidebar_state="collapsed"
+    )
+    
     st.title("PDF 数据提取器")
 
     # 从Secrets获取GitHub配置
     try:
-        github_token = st.secrets.github.token
-        repo_name = st.secrets.github.repo
+        github_token = st.secrets["github"]["token"]
+        repo_name = st.secrets["github"]["repo"]
         file_path = "history_data/extracted_data.xlsx"
     except Exception as e:
         st.error("请正确配置GitHub Secrets！")
@@ -192,8 +205,9 @@ def main_ui():
     # 数据展示模块
     with st.expander("📈 第二步 - 数据展示", expanded=True):
         try:
-            # 从GitHub获取数据
-            g = Github(github_token)
+            # 使用新的API从GitHub获取数据
+            auth = Auth.Token(github_token)
+            g = Github(auth=auth)
             repo = g.get_repo(repo_name)
             contents = repo.get_contents(file_path)
             data_df = pd.read_excel(BytesIO(base64.b64decode(contents.content)), engine='openpyxl')
@@ -204,9 +218,13 @@ def main_ui():
         except Exception as e:
             st.warning("暂无历史数据或读取失败")
 
-    # 数据导出模块（保持原样，但数据源改为GitHub）
+    # 数据导出模块
     with st.expander("📥 第三步 - 数据导出", expanded=True):
         try:
+            # 使用新的API从GitHub获取数据
+            auth = Auth.Token(github_token)
+            g = Github(auth=auth)
+            repo = g.get_repo(repo_name)
             contents = repo.get_contents(file_path)
             data_df = pd.read_excel(BytesIO(base64.b64decode(contents.content)), engine='openpyxl')
             
